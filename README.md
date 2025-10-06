@@ -1,14 +1,43 @@
-# DevOps Todo API (FastAPI)
+name: CI
 
-A minimal FastAPI service built for a complete DevOps workflow:
-- Dockerized application  
-- GitHub Actions CI (build → test → scan → push)  
-- Image published to GitHub Container Registry (GHCR)
+on:
+  push:
+    branches: ["main"]
+  pull_request:
 
-## Endpoint
-`GET /health` → `{"status":"ok"}`
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
-## Run locally
-```bash
-docker compose up --build
-# open http://localhost:8000/health
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Build Docker image
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}/todo-api:${{ github.sha }} -f docker/Dockerfile .
+
+      - name: Login to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push Docker image
+        run: |
+          docker push ghcr.io/${{ github.repository }}/todo-api:${{ github.sha }}
+          docker tag ghcr.io/${{ github.repository }}/todo-api:${{ github.sha }} ghcr.io/${{ github.repository }}/todo-api:latest
+          docker push ghcr.io/${{ github.repository }}/todo-api:latest
